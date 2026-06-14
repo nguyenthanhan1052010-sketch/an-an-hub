@@ -99,25 +99,82 @@ local function CreateRadarText(name, text, color, size)
     return Label
 end
 
+-- Biến lưu thời gian thực tế quái chết (bằng giây của server)
+local lastSeaKingDeath = nil
+local lastGhostShipDeath = nil
+
+local isSeaKingActive = false
+local isGhostShipActive = false
+
 local function FindOceanEvent()
+    local foundSk, foundGs, foundHydra = nil, nil, nil
+    local skName, gsName, hydraName = "", "", ""
+    
     for _, obj in pairs(Workspace:GetChildren()) do
         local name = string.lower(obj.Name)
-        if string.find(name, "sea king") or string.find(name, "ghost ship") or string.find(name, "beast") or string.find(name, "hydra") then
-            if obj:FindFirstChild("HumanoidRootPart") then
-                return obj.HumanoidRootPart, obj.Name
-            elseif obj:IsA("BasePart") then
-                return obj, obj.Name
+        if string.find(name, "sea king") then
+            if obj:FindFirstChild("HumanoidRootPart") or obj:IsA("BasePart") then
+                foundSk = obj:FindFirstChild("HumanoidRootPart") or obj
+                skName = obj.Name
+            end
+        elseif string.find(name, "ghost ship") or string.find(name, "beast") then
+            if obj:FindFirstChild("HumanoidRootPart") or obj:IsA("BasePart") then
+                foundGs = obj:FindFirstChild("HumanoidRootPart") or obj
+                gsName = obj.Name
+            end
+        elseif string.find(name, "hydra") then
+            if obj:FindFirstChild("HumanoidRootPart") or obj:IsA("BasePart") then
+                foundHydra = obj:FindFirstChild("HumanoidRootPart") or obj
+                hydraName = obj.Name
             end
         end
+    end
+    
+    -- Kiểm tra trạng thái xuất hiện/biến mất để bắt thời gian delay chuẩn
+    local currentServerTime = workspace.DistributedGameTime
+    
+    if foundSk then isSeaKingActive = true
+    elseif isSeaKingActive and not foundSk then
+        isSeaKingActive = false
+        lastSeaKingDeath = currentServerTime -- Ghi lại giây chính xác khi Sea King vừa oẹo
+    end
+    
+    if foundGs then isGhostShipActive = true
+    elseif isGhostShipActive and not foundGs then
+        isGhostShipActive = false
+        lastGhostShipDeath = currentServerTime -- Ghi lại giây chính xác khi Thuyền ma vừa chìm
+    end
+    
+    if foundSk then return foundSk, skName
+    elseif foundGs then return foundGs, gsName
+    elseif foundHydra then return foundHydra, hydraName
     end
     return nil, ""
 end
 
 local function UpdateTimeLabels(activeName)
-    local min = os.date("*t").min
-    local skTime = 60 - min
-    local gsTime = 45 - min
-    if gsTime < 0 then gsTime = gsTime + 60 end
+    local serverSeconds = workspace.DistributedGameTime
+    local totalMinutes = math.floor(serverSeconds / 60)
+    
+    local skTime, gsTime
+    
+    -- Tính thời gian Sea King (Ưu tiên tính từ lúc chết thực tế)
+    if lastSeaKingDeath then
+        local secondsSinceDeath = serverSeconds - lastSeaKingDeath
+        skTime = math.max(0, math.ceil((3600 - secondsSinceDeath) / 60)) -- 3600 giây = 1 tiếng
+        if skTime == 0 then lastSeaKingDeath = nil end -- Reset khi hết thời gian hồi
+    else
+        skTime = 60 - (totalMinutes % 60)
+    end
+    
+    -- Tính thời gian Thuyền ma (Ưu tiên tính từ lúc chết thực tế)
+    if lastGhostShipDeath then
+        local secondsSinceDeath = serverSeconds - lastGhostShipDeath
+        gsTime = math.max(0, math.ceil((5400 - secondsSinceDeath) / 60)) -- 5400 giây = 1 tiếng 30 phút
+        if gsTime == 0 then lastGhostShipDeath = nil end
+    else
+        gsTime = 90 - (totalMinutes % 90)
+    end
     
     if activeName ~= "" then
         local n = string.lower(activeName)
